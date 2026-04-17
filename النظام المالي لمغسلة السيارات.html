@@ -1,0 +1,302 @@
+﻿<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>النظام المالي - نسخة احتياطية</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f1f5f9; min-height: 100vh; padding: 20px; }
+        .app-container { max-width: 1400px; margin: 0 auto; }
+        .app-header { background: white; border-radius: 24px; padding: 20px 30px; margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.02); }
+        .app-header h1 { color: #1e293b; display: flex; align-items: center; gap: 12px; }
+        .header-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+        .connection-status { background: #eef2ff; padding: 8px 16px; border-radius: 30px; font-size: 0.9rem; }
+        .backup-btn { background: #f59e0b; color: white; border: none; border-radius: 40px; padding: 10px 20px; cursor: pointer; display: flex; align-items: center; gap: 8px; }
+        .restore-btn { background: #8b5cf6; color: white; border: none; border-radius: 40px; padding: 10px 20px; cursor: pointer; display: flex; align-items: center; gap: 8px; }
+        .lock-btn { background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 40px; padding: 10px 20px; cursor: pointer; display: flex; align-items: center; gap: 8px; }
+        .lock-btn.unlocked { background: #10b981; color: white; border-color: #10b981; }
+        .tabs { display: flex; gap: 8px; margin-bottom: 24px; background: white; padding: 8px; border-radius: 60px; }
+        .tab-btn { flex: 1; padding: 16px; border: none; background: transparent; border-radius: 40px; font-weight: 700; cursor: pointer; color: #64748b; }
+        .tab-btn.active { background: #2563eb; color: white; }
+        .tab-content { display: none; background: white; border-radius: 24px; padding: 24px; }
+        .tab-content.active { display: block; }
+        .dashboard-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; }
+        .stat-card { background: #f8fafc; padding: 24px; border-radius: 24px; border: 1px solid #e2e8f0; }
+        .stat-card label { display: block; color: #475569; margin-bottom: 12px; font-weight: 600; }
+        .stat-card input { width: 100%; padding: 16px; border: 1px solid #cbd5e1; border-radius: 16px; font-size: 1.4rem; font-weight: 700; background: white; text-align: right; }
+        .stat-card input:disabled { background: #f1f5f9; color: #1e293b; }
+        .stat-card input[readonly] { background: #eef2ff; }
+        .table-container { overflow-x: auto; margin-top: 20px; }
+        table { width: 100%; border-collapse: collapse; min-width: 1000px; }
+        th, td { padding: 14px 12px; text-align: right; border-bottom: 1px solid #e2e8f0; }
+        th { background: #f1f5f9; color: #1e293b; }
+        input:not([type="search"]) { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 12px; text-align: right; }
+        input:disabled { background: #f1f5f9; }
+        .delete-btn { color: #ef4444; background: none; border: none; font-size: 1.2rem; cursor: pointer; }
+        .delete-btn:disabled { color: #cbd5e1; cursor: not-allowed; }
+        .add-btn { background: #2563eb; color: white; border: none; padding: 12px 24px; border-radius: 40px; margin: 16px 0; cursor: pointer; }
+        .add-btn:disabled { background: #94a3b8; cursor: not-allowed; }
+        .filter-bar { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; align-items: center; }
+        .filter-bar input { padding: 12px 16px; border: 1px solid #cbd5e1; border-radius: 40px; }
+        .totals-bar { position: sticky; bottom: 0; background: #0f172a; color: white; padding: 16px 24px; border-radius: 20px; margin-top: 20px; display: flex; gap: 30px; font-weight: bold; }
+        #restoreFileInput { display: none; }
+    </style>
+</head>
+<body>
+
+<div class="app-container">
+    <div class="app-header">
+        <h1><i class="fas fa-chart-pie"></i> التقارير المالية</h1>
+        <div class="header-actions">
+            <span class="connection-status" id="connectionBadge"><i class="fas fa-circle-notch fa-spin"></i> جاري الاتصال...</span>
+            <button class="backup-btn" id="backupBtn"><i class="fas fa-download"></i> تحميل نسخة احتياطية</button>
+            <button class="restore-btn" id="restoreBtn"><i class="fas fa-upload"></i> استعادة نسخة</button>
+            <input type="file" id="restoreFileInput" accept=".json,application/json">
+            <button class="lock-btn" id="lockBtn"><i class="fas fa-lock"></i> <span id="lockText">فتح وضع التعديل</span></button>
+        </div>
+    </div>
+
+    <div class="tabs">
+        <button class="tab-btn active" data-tab="dashboard">📊 الرئيسي</button>
+        <button class="tab-btn" data-tab="daily">📅 التقرير اليومي</button>
+        <button class="tab-btn" data-tab="debts">💰 الديون</button>
+    </div>
+
+    <!-- التبويب الرئيسي -->
+    <div id="dashboard" class="tab-content active">
+        <div class="dashboard-grid">
+            <div class="stat-card"><label>💰 موجودات الصندوق</label><input type="text" id="boxCash" disabled></div>
+            <div class="stat-card"><label>📈 إجمالي العمل الكلي</label><input type="text" id="totalWork" disabled></div>
+            <div class="stat-card"><label>🧾 إجمالي النثريات</label><input type="text" id="totalExpenses" disabled></div>
+            <div class="stat-card"><label>📊 إجمالي الربح</label><input type="text" id="totalProfit" readonly disabled></div>
+            <div class="stat-card"><label>🤝 الربح بعد خصم الشريك</label><input type="text" id="profitAfterPartner" readonly disabled></div>
+            <div class="stat-card"><label>📋 إجمالي الديون</label><input type="text" id="totalDebts" disabled></div>
+            <div class="stat-card"><label>⏳ مبلغ غير مستلم من الشريك</label><input type="text" id="unreceivedFromPartner" disabled></div>
+        </div>
+    </div>
+
+    <!-- التبويب اليومي -->
+    <div id="daily" class="tab-content">
+        <div class="filter-bar">
+            <input type="date" id="dailyDateFrom"> <span>إلى</span> <input type="date" id="dailyDateTo">
+            <button class="add-btn" id="searchDailyBtn"><i class="fas fa-search"></i> بحث</button>
+            <button class="add-btn" id="resetDailyBtn"><i class="fas fa-undo"></i> الكل</button>
+            <button class="add-btn" id="addDailyRowBtn" disabled><i class="fas fa-plus"></i> إضافة صف</button>
+        </div>
+        <div class="table-container">
+            <table id="dailyTable">
+                <thead><tr><th>التاريخ</th><th>اليوم</th><th>العمل اليومي</th><th>النثريات</th><th>الربح الصافي</th><th>بعد خصم الشريك</th><th>ملاحظات</th><th>حذف</th></tr></thead>
+                <tbody id="dailyTableBody"></tbody>
+            </table>
+        </div>
+        <div class="totals-bar" id="dailyTotals"></div>
+    </div>
+
+    <!-- تبويب الديون -->
+    <div id="debts" class="tab-content">
+        <div class="filter-bar">
+            <input type="date" id="debtDateFrom"> <span>إلى</span> <input type="date" id="debtDateTo">
+            <input type="text" id="debtNameFilter" placeholder="ابحث بالاسم">
+            <button class="add-btn" id="searchDebtBtn"><i class="fas fa-search"></i> فلترة</button>
+            <button class="add-btn" id="resetDebtBtn"><i class="fas fa-undo"></i> الكل</button>
+            <button class="add-btn" id="addDebtRowBtn" disabled><i class="fas fa-plus"></i> إضافة دين</button>
+        </div>
+        <div class="table-container">
+            <table id="debtTable">
+                <thead><tr><th>التاريخ</th><th>الاسم</th><th>العدد</th><th>المبلغ</th><th>ملاحظات</th><th>حذف</th></tr></thead>
+                <tbody id="debtTableBody"></tbody>
+            </table>
+        </div>
+        <div class="totals-bar" id="debtTotals"></div>
+    </div>
+</div>
+
+<script>
+    (function(){
+        // ⚠️⚠️⚠️ استبدل هذا الكائن بالإعدادات الحقيقية من مشروعك في Firebase ⚠️⚠️⚠️
+        const firebaseConfig = {
+          
+apiKey: "AIzaSyCuD8BZD620qN3Trgr5mmVkOUT8pBLrtyA",
+  authDomain: "trasl-27847.firebaseapp.com",
+  databaseURL: "https://trasl-27847-default-rtdb.firebaseio.com",
+  projectId: "trasl-27847",
+  storageBucket: "trasl-27847.firebasestorage.app",
+  messagingSenderId: "944626478893",
+  appId: "1:944626478893:web:d78eb7303265623afaada4",
+  measurementId: "G-BL8QSCBFP8"  
+};
+        
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+        
+        // 🆕 دوال تنسيق الأرقام
+        function formatNumber(num) {
+            if (num === null || num === undefined || isNaN(num)) return '0';
+            let parts = Number(num).toFixed(2).split('.');
+            parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+            return parts.join('.');
+        }
+        function parseFormattedNumber(str) {
+            if (!str) return 0;
+            return Number(String(str).replace(/,/g, '')) || 0;
+        }
+        
+        let isUnlocked = false;
+        const EDIT_PASSWORD = "123";
+        let dailyData = [], debtData = [];
+        let dashboardData = { boxCash:0, totalWork:0, totalExpenses:0, totalDebts:0, unreceivedFromPartner:0 };
+
+        // DOM Elements
+        const lockBtn = document.getElementById('lockBtn'); const lockIcon = lockBtn.querySelector('i'); const lockText = document.getElementById('lockText');
+        const addDailyBtn = document.getElementById('addDailyRowBtn'); const addDebtBtn = document.getElementById('addDebtRowBtn');
+        const connectionBadge = document.getElementById('connectionBadge'); const backupBtn = document.getElementById('backupBtn');
+        const restoreBtn = document.getElementById('restoreBtn'); const restoreFileInput = document.getElementById('restoreFileInput');
+
+        // Connection Status
+        db.ref('.info/connected').on('value', snap => {
+            connectionBadge.innerHTML = snap.val() ? '<i class="fas fa-check-circle" style="color:#10b981;"></i> متصل بالسحابة' : '<i class="fas fa-exclamation-triangle" style="color:#f59e0b;"></i> غير متصل';
+        });
+
+        // Lock/Unlock
+        lockBtn.addEventListener('click', () => {
+            if (!isUnlocked) {
+                if(prompt('🔐 كلمة المرور:') === EDIT_PASSWORD) { isUnlocked = true; lockBtn.classList.add('unlocked'); lockIcon.className = 'fas fa-lock-open'; lockText.textContent = 'إغلاق وضع التعديل'; setEditableMode(true); }
+                else if (event !== null) alert('❌ خطأ');
+            } else { isUnlocked = false; lockBtn.classList.remove('unlocked'); lockIcon.className = 'fas fa-lock'; lockText.textContent = 'فتح وضع التعديل'; setEditableMode(false); }
+        });
+
+        function setEditableMode(enabled) {
+            ['boxCash','totalWork','totalExpenses','totalDebts','unreceivedFromPartner'].forEach(id => document.getElementById(id).disabled = !enabled);
+            addDailyBtn.disabled = !enabled; addDebtBtn.disabled = !enabled;
+            renderDailyTable(); renderDebtTable();
+        }
+
+        // Load Data
+        function loadData() {
+            db.ref('dashboard').on('value', snap => { dashboardData = snap.val() || { boxCash:0, totalWork:0, totalExpenses:0, totalDebts:0, unreceivedFromPartner:0 }; updateDashboardUI(); });
+            db.ref('daily').on('value', snap => { dailyData = snap.exists() ? Object.entries(snap.val()).map(([id,val])=>({id,...val})) : []; renderDailyTable(); });
+            db.ref('debts').on('value', snap => { debtData = snap.exists() ? Object.entries(snap.val()).map(([id,val])=>({id,...val})) : []; renderDebtTable(); });
+        }
+        function updateDashboardUI() {
+            document.getElementById('boxCash').value = formatNumber(dashboardData.boxCash);
+            document.getElementById('totalWork').value = formatNumber(dashboardData.totalWork);
+            document.getElementById('totalExpenses').value = formatNumber(dashboardData.totalExpenses);
+            document.getElementById('totalDebts').value = formatNumber(dashboardData.totalDebts);
+            document.getElementById('unreceivedFromPartner').value = formatNumber(dashboardData.unreceivedFromPartner);
+            const profit = (dashboardData.totalWork||0) - (dashboardData.totalExpenses||0);
+            document.getElementById('totalProfit').value = formatNumber(profit);
+            document.getElementById('profitAfterPartner').value = formatNumber(profit/2);
+        }
+        function saveDashboard() { 
+            if(!isUnlocked) return; 
+            db.ref('dashboard').set({ 
+                boxCash: parseFormattedNumber(document.getElementById('boxCash').value), 
+                totalWork: parseFormattedNumber(document.getElementById('totalWork').value), 
+                totalExpenses: parseFormattedNumber(document.getElementById('totalExpenses').value), 
+                totalDebts: parseFormattedNumber(document.getElementById('totalDebts').value), 
+                unreceivedFromPartner: parseFormattedNumber(document.getElementById('unreceivedFromPartner').value) 
+            }); 
+        }
+        ['boxCash','totalWork','totalExpenses','totalDebts','unreceivedFromPartner'].forEach(id => document.getElementById(id).addEventListener('change', saveDashboard));
+
+        // Daily Table
+        function renderDailyTable() {
+            const from = document.getElementById('dailyDateFrom').value, to = document.getElementById('dailyDateTo').value;
+            let filtered = dailyData.filter(d => (!from||d.date>=from) && (!to||d.date<=to));
+            let html = '', tw=0, te=0, tp=0, ta=0;
+            filtered.sort((a,b)=> (a.date||'').localeCompare(b.date||''));
+            filtered.forEach(r => {
+                const w = +r.dailyWork||0, e = +r.expenses||0, p = w-e, a = p/2; 
+                tw+=w; te+=e; tp+=p; ta+=a;
+                const dis = isUnlocked ? '' : 'disabled';
+                html += `<tr>
+                    <td><input type="date" value="${r.date||''}" ${dis} onchange="updateDaily('${r.id}','date',this.value)"></td>
+                    <td><input value="${r.day||''}" ${dis} onchange="updateDaily('${r.id}','day',this.value)"></td>
+                    <td><input type="text" value="${formatNumber(w)}" ${dis} onchange="updateDaily('${r.id}','dailyWork',this.value)"></td>
+                    <td><input type="text" value="${formatNumber(e)}" ${dis} onchange="updateDaily('${r.id}','expenses',this.value)"></td>
+                    <td><input value="${formatNumber(p)}" readonly disabled></td>
+                    <td><input value="${formatNumber(a)}" readonly disabled></td>
+                    <td><input value="${r.notes||''}" ${dis} onchange="updateDaily('${r.id}','notes',this.value)"></td>
+                    <td><button class="delete-btn" ${dis} onclick="deleteDaily('${r.id}')"><i class="fas fa-trash"></i></button></td>
+                </tr>`;
+            });
+            document.getElementById('dailyTableBody').innerHTML = html || '<tr><td colspan="8" style="text-align:center">لا توجد بيانات</td></tr>';
+            document.getElementById('dailyTotals').innerHTML = `إجمالي العمل: ${formatNumber(tw)} | النثريات: ${formatNumber(te)} | الربح: ${formatNumber(tp)} | بعد الشريك: ${formatNumber(ta)}`;
+        }
+        window.updateDaily = (id, f, v) => { if(isUnlocked) db.ref(`daily/${id}/${f}`).set((f==='dailyWork'||f==='expenses') ? parseFormattedNumber(v) : v); };
+        window.deleteDaily = (id) => { if(isUnlocked) db.ref(`daily/${id}`).remove(); };
+        addDailyBtn.onclick = ()=>{ if(isUnlocked) db.ref('daily').push({ date: new Date().toISOString().split('T')[0], day:'', dailyWork:0, expenses:0, notes:'' }); };
+        document.getElementById('searchDailyBtn').onclick = renderDailyTable;
+        document.getElementById('resetDailyBtn').onclick = ()=>{ document.getElementById('dailyDateFrom').value=''; document.getElementById('dailyDateTo').value=''; renderDailyTable(); };
+
+        // Debts Table
+        function renderDebtTable() {
+            const from = document.getElementById('debtDateFrom').value, to = document.getElementById('debtDateTo').value, n = document.getElementById('debtNameFilter').value.toLowerCase();
+            let filtered = debtData.filter(d => (!from||d.date>=from) && (!to||d.date<=to) && (!n||(d.name||'').toLowerCase().includes(n)));
+            let html = '', tq=0, ta=0; const dis = isUnlocked ? '' : 'disabled';
+            filtered.forEach(r => { 
+                const q = +r.qty||0, am = +r.amount||0; tq+=q; ta+=am;
+                html += `<tr>
+                    <td><input type="date" value="${r.date||''}" ${dis} onchange="updateDebt('${r.id}','date',this.value)"></td>
+                    <td><input value="${r.name||''}" ${dis} onchange="updateDebt('${r.id}','name',this.value)"></td>
+                    <td><input type="text" value="${formatNumber(q)}" ${dis} onchange="updateDebt('${r.id}','qty',this.value)"></td>
+                    <td><input type="text" value="${formatNumber(am)}" ${dis} onchange="updateDebt('${r.id}','amount',this.value)"></td>
+                    <td><input value="${r.notes||''}" ${dis} onchange="updateDebt('${r.id}','notes',this.value)"></td>
+                    <td><button class="delete-btn" ${dis} onclick="deleteDebt('${r.id}')"><i class="fas fa-trash"></i></button></td>
+                </tr>`;
+            });
+            document.getElementById('debtTableBody').innerHTML = html || '<tr><td colspan="6" style="text-align:center">لا توجد ديون</td></tr>';
+            document.getElementById('debtTotals').innerHTML = `إجمالي العدد: ${formatNumber(tq)} | المبلغ: ${formatNumber(ta)}`;
+        }
+        window.updateDebt = (id, f, v) => { if(isUnlocked) db.ref(`debts/${id}/${f}`).set((f==='qty'||f==='amount') ? parseFormattedNumber(v) : v); };
+        window.deleteDebt = (id) => { if(isUnlocked) db.ref(`debts/${id}`).remove(); };
+        addDebtBtn.onclick = ()=>{ if(isUnlocked) db.ref('debts').push({ date: new Date().toISOString().split('T')[0], name:'', qty:0, amount:0, notes:'' }); };
+        document.getElementById('searchDebtBtn').onclick = renderDebtTable;
+        document.getElementById('resetDebtBtn').onclick = ()=>{ document.getElementById('debtDateFrom').value=''; document.getElementById('debtDateTo').value=''; document.getElementById('debtNameFilter').value=''; renderDebtTable(); };
+
+        // Tabs
+        document.querySelectorAll('.tab-btn').forEach(b => b.onclick = ()=>{
+            document.querySelectorAll('.tab-btn').forEach(bt=>bt.classList.remove('active')); document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));
+            b.classList.add('active'); document.getElementById(b.dataset.tab).classList.add('active');
+            if(b.dataset.tab==='daily') renderDailyTable(); else if(b.dataset.tab==='debts') renderDebtTable();
+        });
+
+        // Backup & Restore
+        backupBtn.onclick = async () => {
+            try {
+                const dash = (await db.ref('dashboard').get()).val() || {};
+                const daily = (await db.ref('daily').get()).val() || {};
+                const debts = (await db.ref('debts').get()).val() || {};
+                const backup = { dashboard: dash, daily: daily, debts: debts, timestamp: new Date().toISOString() };
+                const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `backup_${new Date().toISOString().slice(0,10)}.json`; a.click(); URL.revokeObjectURL(url);
+                alert('✅ تم تحميل النسخة الاحتياطية');
+            } catch(e) { alert('❌ فشل التحميل'); }
+        };
+        restoreBtn.onclick = () => restoreFileInput.click();
+        restoreFileInput.onchange = (e) => {
+            const file = e.target.files[0]; if(!file) return;
+            const reader = new FileReader();
+            reader.onload = async (ev) => {
+                try {
+                    if(!confirm('⚠️ سيتم استبدال جميع البيانات الحالية. متأكد؟')) return;
+                    const data = JSON.parse(ev.target.result);
+                    if(data.dashboard) await db.ref('dashboard').set(data.dashboard);
+                    if(data.daily) await db.ref('daily').set(data.daily);
+                    if(data.debts) await db.ref('debts').set(data.debts);
+                    alert('✅ تمت الاستعادة بنجاح');
+                    restoreFileInput.value = '';
+                } catch(err) { alert('❌ ملف غير صالح'); restoreFileInput.value = ''; }
+            };
+            reader.readAsText(file);
+        };
+
+        loadData(); setEditableMode(false);
+    })();
+</script>
+</body>
+</html>
